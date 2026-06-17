@@ -134,17 +134,23 @@ SHOW VARIABLES LIKE 'innodb_io_capacity';
 
 
 -- -----------------------------------------------------------------------------
--- Step 7 — Persist settings in my.ini
+-- Step 7 — Persisting settings to my.ini
 -- -----------------------------------------------------------------------------
--- SET GLOBAL applies changes until the next MySQL service restart.
--- To make changes permanent, add the following to the [mysqld] section
--- of C:\ProgramData\MySQL\MySQL Server 8.0\my.ini and restart the service:
+-- SET GLOBAL applies changes for the current session only and resets on
+-- service restart. To make changes permanent, the following entries need
+-- to be added to the [mysqld] section of:
+-- C:\ProgramData\MySQL\MySQL Server 8.0\my.ini
 --
--- [mysqld]
--- innodb_buffer_pool_size = 1G
--- innodb_buffer_pool_instances = 2
--- innodb_io_capacity = 500
+-- Recommended entries:
+--   innodb_buffer_pool_size = 1G
+--   innodb_buffer_pool_instances = 2
+--   innodb_io_capacity = 500
 --
--- Restart command (admin PowerShell):
--- Restart-Service -Name "MySQL80"
+-- Note: On this Windows environment, my.ini is protected by OS-level
+--   permissions. Direct edits require admin PowerShell and care must be
+--   taken to preserve the original file encoding (ASCII) to avoid
+--   corrupting the config file. The dynamic SET GLOBAL approach
+--   demonstrates the tuning intent. In a production Linux environment
+--   these values would be written to /etc/mysql/my.cnf and persisted
+--   with a service restart.
 -- -----------------------------------------------------------------------------
