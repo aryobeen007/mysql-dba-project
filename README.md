@@ -13,7 +13,7 @@ This is an end-to-end MySQL database administration project built on publicly av
 | 1 | Data Sourcing and Documentation | ✅ Complete |
 | 2 | Installation, Schema Design, and Data Loading | ✅ Complete |
 | 3 | Baseline Measurement and Diagnostics | ✅ Complete |
-| 4 | Performance Optimization | ⏳ Pending |
+| 4 | Performance Optimization | ✅ Complete |
 | 5 | Backup and Recovery | ⏳ Pending |
 | 6 | Security and User Management | ⏳ Pending |
 | 7 | Portfolio Integration | ⏳ Pending |
