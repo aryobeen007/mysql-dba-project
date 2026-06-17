@@ -11,7 +11,8 @@ USE cancer_environment_db;
 
 -- -----------------------------------------------------------------------------
 -- Q1 — Cancer incidence trend by state
--- Baseline: 12 ms
+-- Baseline: 12 ms | Optimized: 23 ms
+-- Note: Small table, no optimization needed. Slight variance is normal.
 -- -----------------------------------------------------------------------------
 
 SELECT
@@ -26,7 +27,7 @@ ORDER BY s.state_name, y.year_id;
 
 -- -----------------------------------------------------------------------------
 -- Q2 — States with highest average cancer rate
--- Baseline: 16 ms
+-- Baseline: 16 ms | Optimized: 8 ms
 -- -----------------------------------------------------------------------------
 
 SELECT
@@ -40,25 +41,41 @@ ORDER BY avg_cancer_rate DESC;
 
 -- -----------------------------------------------------------------------------
 -- Q3 — Air quality vs cancer incidence by state
--- Baseline: 293 ms
+-- Baseline: 293 ms | Initial rerun: 903 ms | Optimized: 58 ms
+-- Fix: Rewrote using subqueries to pre-aggregate each fact table separately
+--      before joining, eliminating the cross join between fact_air_quality
+--      and fact_cancer_incidence that caused the regression.
 -- -----------------------------------------------------------------------------
 
 SELECT
     s.state_name,
-    ROUND(AVG(aq.good_days), 1)         AS avg_good_air_days,
-    ROUND(AVG(aq.unhealthy_days), 1)    AS avg_unhealthy_days,
-    ROUND(AVG(ci.age_adjusted_rate), 2) AS avg_cancer_rate
-FROM fact_air_quality aq
-JOIN dim_county c  ON aq.county_id = c.county_id
-JOIN dim_state s   ON c.state_id   = s.state_id
-JOIN fact_cancer_incidence ci ON ci.state_id = s.state_id
-GROUP BY s.state_name
-ORDER BY avg_cancer_rate DESC;
+    aq.avg_good_air_days,
+    aq.avg_unhealthy_days,
+    ci.avg_cancer_rate
+FROM dim_state s
+JOIN (
+    SELECT
+        c.state_id,
+        ROUND(AVG(aq.good_days), 1)      AS avg_good_air_days,
+        ROUND(AVG(aq.unhealthy_days), 1) AS avg_unhealthy_days
+    FROM fact_air_quality aq
+    JOIN dim_county c ON aq.county_id = c.county_id
+    GROUP BY c.state_id
+) aq ON aq.state_id = s.state_id
+JOIN (
+    SELECT
+        state_id,
+        ROUND(AVG(age_adjusted_rate), 2) AS avg_cancer_rate
+    FROM fact_cancer_incidence
+    GROUP BY state_id
+) ci ON ci.state_id = s.state_id
+ORDER BY ci.avg_cancer_rate DESC;
 
 
 -- -----------------------------------------------------------------------------
--- Q4 — Health-based water violations by state (OPTIMIZED)
--- Baseline: 9 min 42 sec
+-- Q4 — Health-based water violations by state
+-- Baseline: 9 min 42 sec | Optimized: 2,619 ms
+-- Fix: CTE pre-filter + composite index idx_health_pwsid
 -- -----------------------------------------------------------------------------
 
 WITH health_violations AS (
@@ -81,8 +98,9 @@ ORDER BY total_violations DESC;
 
 
 -- -----------------------------------------------------------------------------
--- Q5 — CAFO facilities near impaired waters by state (OPTIMIZED)
--- Baseline: 4,658 ms
+-- Q5 — CAFO facilities near impaired waters by state
+-- Baseline: 4,658 ms | Optimized: 165 ms
+-- Fix: Subquery pre-aggregation + composite index idx_impaired_state
 -- -----------------------------------------------------------------------------
 
 SELECT
@@ -102,15 +120,31 @@ ORDER BY cf.facility_count DESC;
 
 -- -----------------------------------------------------------------------------
 -- Q6 — Smoking prevalence vs cancer rate by state
--- Baseline: 244 ms
+-- Baseline: 244 ms | Initial rerun: 18,114 ms | Optimized: 1,640 ms
+-- Fix: Rewrote using subqueries to pre-aggregate each fact table separately
+--      before joining. Leading wildcard LIKE '%Smoking%' prevents index use
+--      on question column, but subquery rewrite eliminates the cross join
+--      that caused the 18-second regression.
 -- -----------------------------------------------------------------------------
 
 SELECT
     s.state_name,
-    ROUND(AVG(CASE WHEN cd.question LIKE '%Smoking%' THEN cd.data_value END), 1) AS avg_smoking_pct,
-    ROUND(AVG(ci.age_adjusted_rate), 2) AS avg_cancer_rate
-FROM fact_chronic_disease_indicators cd
-JOIN dim_state s ON cd.state_id = s.state_id
-JOIN fact_cancer_incidence ci ON ci.state_id = s.state_id
-GROUP BY s.state_name
-ORDER BY avg_cancer_rate DESC;
+    sm.avg_smoking_pct,
+    ci.avg_cancer_rate
+FROM dim_state s
+JOIN (
+    SELECT
+        state_id,
+        ROUND(AVG(data_value), 1) AS avg_smoking_pct
+    FROM fact_chronic_disease_indicators
+    WHERE question LIKE '%Smoking%'
+    GROUP BY state_id
+) sm ON sm.state_id = s.state_id
+JOIN (
+    SELECT
+        state_id,
+        ROUND(AVG(age_adjusted_rate), 2) AS avg_cancer_rate
+    FROM fact_cancer_incidence
+    GROUP BY state_id
+) ci ON ci.state_id = s.state_id
+ORDER BY ci.avg_cancer_rate DESC;
